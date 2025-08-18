@@ -1,8 +1,15 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Ensure media directory exists
+const mediaDir = path.join(__dirname, 'media');
+if (!fs.existsSync(mediaDir)) {
+    fs.mkdirSync(mediaDir);
+}
 
 // Initialize WhatsApp client
 const client = new Client({
@@ -44,7 +51,7 @@ client.on('message', async message => {
 async function saveOneViewMedia(message) {
     if (message.hasMedia) {
         const media = await message.downloadMedia();
-        const filePath = `./media/${message.id.id}.${media.mimetype.split('/')[1]}`;
+        const filePath = `${mediaDir}/${message.id.id}.${media.mimetype.split('/')[1]}`;
         fs.writeFileSync(filePath, media.data, { encoding: 'base64' });
         client.sendMessage(message.from, 'Media saved successfully!');
     } else {
