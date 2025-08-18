@@ -27,6 +27,11 @@ if (fs.existsSync(process.env.SESSION_FILE_PATH)) {
     client.initialize();
 }
 
+// Root route
+app.get('/', (req, res) => {
+    res.send('WhatsApp Bot is running!');
+});
+
 // Event listener for incoming messages
 client.on('message', async message => {
     const command = message.body.split(' ')[0].toLowerCase();
