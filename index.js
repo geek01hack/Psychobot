@@ -1,5 +1,5 @@
 const makeWASocket = require("@whiskeysockets/baileys").default;
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require("@whiskeysockets/baileys");
+const { DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const fs = require("fs");
 const path = require("path");
@@ -11,11 +11,13 @@ const PREFIX = "!";
 const PHONE_NUMBER = "237696814391";
 
 async function startBot() {
-    // Auth multi-fichiers
-    const { state, saveCreds } = await useMultiFileAuthState(path.resolve(__dirname, 'auth_info'));
+    const { version } = await fetchLatestBaileysVersion();
 
-    // Store mémoire fonctionnel
-    const store = makeCacheableSignalKeyStore(state, P({ level: 'silent' }));
+    const sock = makeWASocket({
+        version,
+        logger: P({ level: "silent" }),
+        printQRInTerminal: true  // <-- Affiche le QR code dans le terminal
+    });
 
     // Chargement dynamique des commandes
     const commands = new Map();
@@ -26,19 +28,6 @@ async function startBot() {
         const command = require(`./commands/${file}`);
         if (command.name) commands.set(command.name, command);
     }
-
-    // Version WhatsApp
-    const { version } = await fetchLatestBaileysVersion();
-
-    const sock = makeWASocket({
-        version,
-        logger: P({ level: "silent" }),
-        auth: state,
-        printQRInTerminal: false
-    });
-
-    // Sauvegarde automatique des credentials
-    sock.ev.on("creds.update", saveCreds);
 
     // Gestion des messages entrants
     sock.ev.on("messages.upsert", async (m) => {
