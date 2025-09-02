@@ -1,7 +1,6 @@
 // index.js
 const express = require('express');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const qrcode = require("qrcode-terminal");
 const QRCode = require("qrcode");
 const pino = require("pino");
 const fs = require("fs");
@@ -67,17 +66,14 @@ async function startBot() {
     sock.ev.on("connection.update", update => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
-            latestQR = qr; // On stocke le QR pour l’afficher sur /qr
-            console.log("------------------------------------------------");
-            qrcode.generate(qr, { small: true });
-            console.log("[QR] Nouveau QR généré. Ouvrez /qr pour le scanner.");
-            console.log("------------------------------------------------");
+            latestQR = qr;
+            console.log("[QR] Nouveau QR généré. Ouvrez http://localhost:3000/qr pour le scanner.");
         }
         if (connection === "close") {
             if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) startBot();
             else console.log("Déconnecté, supprime auth_info pour reconnecter manuellement.");
         } else if (connection === "open") {
-            latestQR = null; // plus besoin de QR une fois connecté
+            latestQR = null;
             console.log("✅ Bot connecté !");
         }
     });
@@ -232,7 +228,7 @@ app.get("/qr", async (req, res) => {
                     }
                 }
                 fetchQR();
-                setInterval(fetchQR, 10000); // update toutes les 10s
+                setInterval(fetchQR, 10000);
             </script>
         </body>
         </html>
