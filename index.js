@@ -1,15 +1,15 @@
 // index.js
 const makeWASocket = require("@whiskeysockets/baileys").default;
-const { useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
-const { makeInMemoryStore } = require("@whiskeysockets/baileys/lib/Stores/inMemory");
+const { useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const fs = require("fs");
 const path = require("path");
 
-const store = makeInMemoryStore({ logger: P({ level: "silent" }) });
-
 // Auth automatique
 const { state, saveState } = useSingleFileAuthState(path.resolve(__dirname, 'auth_info.json'));
+
+// Store mémoire fonctionnel
+const store = makeCacheableSignalKeyStore(state, P({ level: 'silent' }));
 
 // Préfixe des commandes
 const PREFIX = "!";
@@ -25,7 +25,7 @@ for (const file of commandFiles) {
     if (command.name) commands.set(command.name, command);
 }
 
-// Numéro (facultatif, utilisé seulement pour info)
+// Numéro (info seulement)
 const PHONE_NUMBER = "237696814391";
 
 async function startBot() {
@@ -38,7 +38,7 @@ async function startBot() {
         printQRInTerminal: false
     });
 
-    // Sauvegarde automatique
+    // Sauvegarde automatique des credentials
     sock.ev.on("creds.update", saveState);
 
     // Lier le store
