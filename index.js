@@ -1,133 +1,81 @@
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    makeInMemoryStore,
-    downloadMediaMessage
-} = require("@whiskeysockets/baileys");
-
+// index.js
+const makeWASocket = require("@whiskeysockets/baileys").default;
+const { useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
+const { makeInMemoryStore } = require("@whiskeysockets/baileys/lib/Stores/inMemory");
+const P = require("pino");
 const fs = require("fs");
 const path = require("path");
-const P = require("pino");
 
-// === Store JSON pour mémoriser les messages ===
 const store = makeInMemoryStore({ logger: P({ level: "silent" }) });
-if (fs.existsSync("./baileys_store.json")) store.readFromFile("./baileys_store.json");
 
-// Sauvegarde et nettoyage toutes les 10s
-setInterval(() => {
-    try {
-        Object.keys(store.messages).forEach(jid => {
-            const messages = store.messages[jid];
-            if (messages.length > 5000) store.messages[jid] = messages.slice(-5000);
-        });
-        store.writeToFile("./baileys_store.json");
-    } catch (err) {
-        console.error("Erreur sauvegarde store:", err);
-    }
-}, 10_000);
+// Auth automatique
+const { state, saveState } = useSingleFileAuthState(path.resolve(__dirname, 'auth_info.json'));
+
+// Préfixe des commandes
+const PREFIX = "!";
+
+// Chargement dynamique des commandes
+const commands = new Map();
+const commandFiles = fs.existsSync(path.join(__dirname, "commands"))
+    ? fs.readdirSync(path.join(__dirname, "commands")).filter(f => f.endsWith(".js"))
+    : [];
+
+for (const file of commandFiles) {
+    const command = require(`./commands/${file}`);
+    if (command.name) commands.set(command.name, command);
+}
+
+// Numéro (facultatif, utilisé seulement pour info)
+const PHONE_NUMBER = "237696814391";
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState("session");
     const { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
+        version,
         logger: P({ level: "silent" }),
-        printQRInTerminal: true,
         auth: state,
-        version
+        printQRInTerminal: false
     });
 
-    // Lier le store au socket
+    // Sauvegarde automatique
+    sock.ev.on("creds.update", saveState);
+
+    // Lier le store
     store.bind(sock.ev);
 
-    // Charger automatiquement toutes les commandes
-    const commands = new Map();
-    const commandFiles = fs.readdirSync(path.join(__dirname, "commands")).filter(f => f.endsWith(".js"));
-    for (const file of commandFiles) {
-        const cmd = require(`./commands/${file}`);
-        if (cmd && typeof cmd.run === "function") commands.set(cmd.name, cmd);
-    }
-
-    // 📌 Gestion des messages
-    sock.ev.on("messages.upsert", async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.message || !msg.key.remoteJid) return;
-
-        const from = msg.key.remoteJid;
-        let body = "";
-
-        if (msg.message.conversation) body = msg.message.conversation;
-        else if (msg.message.extendedTextMessage) body = msg.message.extendedTextMessage.text;
-
-        if (!body.startsWith("!")) return;
-
-        const args = body.slice(1).trim().split(/ +/);
-        const commandName = args.shift().toLowerCase();
-        const command = commands.get(commandName);
-
-        if (command && typeof command.run === "function") {
-            try {
-                await command.run({ sock, msg, args });
-            } catch (err) {
-                console.error("Erreur commande:", err);
-                await sock.sendMessage(from, { text: "❌ Erreur lors de l’exécution de la commande." });
+    // Gestion des messages entrants
+    sock.ev.on("messages.upsert", async (m) => {
+        const msg = m.messages[0];
+        if (!msg.key.fromMe && msg.message?.conversation) {
+            const text = msg.message.conversation;
+            if (text.startsWith(PREFIX)) {
+                const args = text.slice(PREFIX.length).trim().split(/ +/);
+                const cmdName = args.shift().toLowerCase();
+                const command = commands.get(cmdName);
+                if (command) {
+                    try {
+                        await command.run({ sock, msg, args });
+                    } catch (err) {
+                        console.error(err);
+                        await sock.sendMessage(msg.key.remoteJid, { text: "Erreur lors de l'exécution de la commande." });
+                    }
+                }
             }
         }
     });
 
-    // 📌 Réaction 👍🏾 → extraction de médias (y compris vue unique)
-    sock.ev.on("messages.reaction", async (reaction) => {
-        try {
-            const { key, text } = reaction;
-            if (!key || !text) return;
-
-            const allowedReactions = ["👍🏾"]; // Tu peux ajouter plus d'emojis si tu veux
-            if (!allowedReactions.includes(text)) return;
-
-            const msg = await store.loadMessage(key.remoteJid, key.id);
-            if (!msg) return;
-
-            let mediaMessage = null;
-            if (msg.message?.imageMessage) mediaMessage = msg.message.imageMessage;
-            else if (msg.message?.videoMessage) mediaMessage = msg.message.videoMessage;
-            else if (msg.message?.viewOnceMessageV2) {
-                const innerMsg = msg.message.viewOnceMessageV2.message;
-                if (innerMsg.imageMessage) mediaMessage = innerMsg.imageMessage;
-                else if (innerMsg.videoMessage) mediaMessage = innerMsg.videoMessage;
-            }
-
-            if (!mediaMessage) return;
-
-            const buffer = await downloadMediaMessage(msg.message, "buffer", {}, { logger: P({ level: "silent" }) });
-            const reactor = reaction.key.participant || reaction.key.remoteJid;
-
-            await sock.sendMessage(reactor, {
-                [mediaMessage.mimetype.startsWith("video/") ? "video" : "image"]: buffer,
-                caption: "✅ Média extrait grâce à ta réaction 👍🏾"
-            });
-        } catch (e) {
-            console.error("Erreur réaction extract:", e);
-        }
-    });
-
-    // 📌 Connexion
+    // Gestion de la connexion
     sock.ev.on("connection.update", (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === "close") {
-            if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-                console.log("[BOT] Reconnexion en cours...");
-                startBot();
-            } else {
-                console.log("❌ Déconnecté définitivement.");
-            }
+            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log("Connexion fermée, reconnect ?", shouldReconnect);
+            if (shouldReconnect) startBot();
         } else if (connection === "open") {
-            console.log(`[BOT] Psycho-Bot connecté ✅ à ${new Date().toLocaleString()}`);
+            console.log("Connecté au compte WhatsApp !");
         }
     });
-
-    sock.ev.on("creds.update", saveCreds);
 }
 
-startBot();
+startBot().catch(console.error);
