@@ -14,7 +14,10 @@ app.listen(PORT, () => {
 });
 
 // ----- Bot WhatsApp -----
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
+const baileys = require("@whiskeysockets/baileys");
+const { default: makeWASocket, DisconnectReason, fetchLatestBaileysVersion } = baileys;
+// Correct import de useSingleFileAuthState
+const { useSingleFileAuthState } = require("@whiskeysockets/baileys/lib/Utils/auth_state");
 const P = require("pino");
 const fs = require("fs");
 const path = require("path");
@@ -42,15 +45,15 @@ async function startBot() {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            console.log("Scan this QR code with WhatsApp:", qr); // Affiche le QR code dans les logs
+            console.log("📲 Scanner ce QR code avec WhatsApp :", qr);
         }
 
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Connexion fermée, reconnect ?', shouldReconnect);
+            console.log('❌ Connexion fermée, reconnect ?', shouldReconnect);
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
-            console.log('Connecté au compte WhatsApp !');
+            console.log('✅ Connecté au compte WhatsApp !');
         }
     });
 
