@@ -2,12 +2,32 @@ const {
     default: makeWASocket,
     useMultiFileAuthState,
     DisconnectReason,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    makeInMemoryStore,
+    downloadMediaMessage
 } = require("@whiskeysockets/baileys");
 
 const fs = require("fs");
 const path = require("path");
 const P = require("pino");
+
+// === Store JSON pour mémoriser les messages ===
+const store = makeInMemoryStore({ logger: P({ level: "silent" }) });
+store.readFromFile("./baileys_store.json");
+
+// Sauvegarde et nettoyage toutes les 10s
+setInterval(() => {
+    // Nettoyage : garder uniquement les 5000 derniers messages
+    Object.keys(store.messages).forEach(jid => {
+        const messages = store.messages[jid];
+        if (messages.length > 5000) {
+            store.messages[jid] = messages.slice(-5000);
+        }
+    });
+
+    // Sauvegarde sur disque
+    store.writeToFile("./baileys_store.json");
+}, 10_000);
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState("session");
@@ -19,6 +39,9 @@ async function startBot() {
         auth: state,
         version
     });
+
+    // Lier le store au socket
+    store.bind(sock.ev);
 
     // Charger automatiquement toutes les commandes
     const commands = new Map();
@@ -62,7 +85,8 @@ async function startBot() {
             if (!key || !text) return;
             if (text !== "👍🏾") return;
 
-            const msg = await sock.loadMessage(key.remoteJid, key.id);
+            // ✅ Récupération via le store
+            const msg = await store.loadMessage(key.remoteJid, key.id);
             if (!msg) return;
 
             let mediaMessage = null;
@@ -79,7 +103,8 @@ async function startBot() {
 
             if (!mediaMessage) return;
 
-            const buffer = await sock.downloadMediaMessage(msg);
+            // ✅ Utiliser downloadMediaMessage officiel
+            const buffer = await downloadMediaMessage(msg, "buffer", {}, { logger: P({ level: "silent" }) });
 
             const reactor = reaction.key.participant || reaction.key.remoteJid;
 
