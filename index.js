@@ -1,3 +1,19 @@
+// index.js
+const express = require("express");
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Route simple pour vérifier que le service tourne
+app.get("/", (req, res) => {
+  res.send("Bot WhatsApp en ligne ✅");
+});
+
+// Démarrage du serveur web
+app.listen(PORT, () => {
+  console.log(`Web service actif sur le port ${PORT}`);
+});
+
+// ----- Bot WhatsApp -----
 const makeWASocket = require("@whiskeysockets/baileys").default;
 const { DisconnectReason, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const P = require("pino");
@@ -7,16 +23,13 @@ const path = require("path");
 // Préfixe des commandes
 const PREFIX = "!";
 
-// Numéro (info seulement)
-const PHONE_NUMBER = "237696814391";
-
 async function startBot() {
     const { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
         version,
         logger: P({ level: "silent" }),
-        printQRInTerminal: true  // <-- Affiche le QR code dans le terminal
+        printQRInTerminal: true  // QR code pour connexion
     });
 
     // Chargement dynamique des commandes
