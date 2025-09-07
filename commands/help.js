@@ -1,26 +1,41 @@
-const fs = require("fs");
-const path = require("path");
+// commands/help.js
+const log = require('../logger')(module);
 
 module.exports = {
-    name: "help",
-    description: "Affiche la liste des commandes disponibles",
-    run: async ({ sock, msg }) => {
-        const from = msg.key.remoteJid;
+    name: 'help',
+    description: "Affiche le menu d'aide du bot.",
+    run: async ({ sock, msg, commands, replyWithTag }) => {
+        if (!sock.user) return;
 
-        // Récupère tous les fichiers .js du dossier commands sauf help.js & about.js
-        const commandFiles = fs.readdirSync(__dirname)
-            .filter(f => f.endsWith(".js") && !["help.js", "about.js"].includes(f))
-            .sort();
+        const BOT_NAME = "PSYCHO BOT";
+        const PREFIX = "!";
+        const remoteJid = msg.key.remoteJid;
+        const sender = msg.pushName || "Utilisateur";
 
-        const commandList = commandFiles.map(f => {
-            const filePath = path.join(__dirname, f);
-            delete require.cache[require.resolve(filePath)]; // éviter le cache
-            const cmd = require(filePath);
-            return `• *${cmd.name}* – ${cmd.description || "Pas de description"}`;
-        }).join("\n");
+        log(`Commande HELP reçue de ${remoteJid}`);
 
-        const text = `📜 *Liste des commandes disponibles :*\n\n${commandList}`;
+        let helpText = `╭───≼ 🤖 *${BOT_NAME}* ≽───╮\n`;
+        helpText += `│\n`;
+        helpText += `│  Salut *${sender}* 👋\n`;
+        helpText += `│  Voici la liste de mes commandes :\n`;
 
-        await sock.sendMessage(from, { text });
+        const availableCommands = Array.from(commands.values())
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        if (availableCommands.length > 0) {
+            availableCommands.forEach(command => {
+                helpText += `│\n│  ◈ *${PREFIX}${command.name}*\n│     ↳ _${command.description || 'Pas de description'}_\n`;
+            });
+        } else {
+            helpText += `│\n│  ⚠️ Aucune commande disponible pour le moment.\n`;
+        }
+
+        helpText += `│\n╰───≼ 🔥 XYBERCLAN 🔥 ≽───╯`;
+
+        try {
+            await replyWithTag(sock, remoteJid, msg, helpText);
+        } catch (e) {
+            log(`[HELP] Impossible d'envoyer le menu d'aide : ${e.message}`);
+        }
     }
 };
