@@ -1,7 +1,7 @@
 module.exports = {
     name: "kick",
-    description: "Exclut un membre du groupe (utilisation : !kick <numéro>)",
-    adminOnly: true, // Limite aux admins pour éviter les abus
+    description: "Exclut un ou plusieurs membres du groupe (usage : !kick <numéro(s)> ou !kick @membre(s))",
+    adminOnly: true,
     run: async ({ sock, msg, args }) => {
         const from = msg.key.remoteJid;
 
@@ -10,25 +10,61 @@ module.exports = {
             return sock.sendMessage(from, { text: "❌ Cette commande ne fonctionne que dans un groupe." });
         }
 
-        // Vérifie qu’un numéro est fourni
-        if (!args[0]) {
-            return sock.sendMessage(from, { text: "❌ Merci de fournir le numéro à exclure." });
+        // Récupère les infos du groupe
+        const groupMetadata = await sock.groupMetadata(from);
+
+        // Auteur du message
+        const sender = msg.key.participant || msg.participant || msg.key.remoteJid;
+
+        // Numéro du bot
+        const botNumber = sock.user.id.includes("@s.whatsapp.net") 
+            ? sock.user.id 
+            : sock.user.id.split(":")[0] + "@s.whatsapp.net";
+
+        // Vérifie si le sender est admin
+        const senderIsAdmin = groupMetadata.participants.some(
+            p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin")
+        );
+
+        // 🔎 Debug logs
+        console.log("========== [DEBUG KICK] ==========");
+        console.log("Sender      :", sender);
+        console.log("BotNumber   :", botNumber);
+        console.log("SenderIsAdmin :", senderIsAdmin);
+        console.log("Group Admins :", groupMetadata.participants.filter(p => p.admin));
+        console.log("==================================");
+
+        // Autorisé si : sender est le bot OU sender est admin
+        if (!(sender === botNumber || senderIsAdmin)) {
+            return sock.sendMessage(from, { text: "❌ Tu dois être admin pour utiliser cette commande." });
         }
 
-        // Nettoyage du numéro et création du JID
-        const user = args[0].replace(/\D/g, "") + "@s.whatsapp.net";
+        // Vérifie si le bot est admin dans le groupe
+        const botIsAdmin = groupMetadata.participants.some(
+            p => p.id === botNumber && (p.admin === "admin" || p.admin === "superadmin")
+        );
+
+        if (!botIsAdmin) {
+            return sock.sendMessage(from, {
+                text: "❌ Je ne peux pas exclure de membres car je ne suis pas admin. Veuillez me promouvoir en admin pour utiliser cette commande."
+            });
+        }
+
+        // Vérifie si l’utilisateur a mentionné quelqu’un
+        if (!args.length && !msg.message.extendedTextMessage?.contextInfo?.mentionedJid) {
+            return sock.sendMessage(from, { text: "❌ Mentionne le membre à exclure !" });
+        }
+
+        // Récupère les JIDs à exclure
+        const toRemove = msg.message.extendedTextMessage?.contextInfo?.mentionedJid ||
+                         args.map(num => num.includes("@") ? num : num + "@s.whatsapp.net");
 
         try {
-            // Exclusion du membre
-            await sock.groupParticipantsUpdate(from, [user], "remove");
-
-            // Confirmation
-            await sock.sendMessage(from, { text: `✅ ${args[0]} a été exclu du groupe !` });
-
-            console.log(`[KICK] ${args[0]} exclu du groupe ${from}`);
+            await sock.groupParticipantsUpdate(from, toRemove, "remove");
+            sock.sendMessage(from, { text: `✅ Membre(s) exclu(s) avec succès !` });
         } catch (err) {
-            console.error("[KICK] Erreur :", err);
-            await sock.sendMessage(from, { text: "❌ Impossible d’exclure cet utilisateur." });
+            sock.sendMessage(from, { text: "❌ Impossible d’exclure le(s) membre(s)." });
+            console.error(err);
         }
     }
 };
