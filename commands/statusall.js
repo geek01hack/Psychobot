@@ -1,50 +1,47 @@
-const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
-const fs = require("fs");
-const path = require("path");
-
 module.exports = {
     name: "statusall",
-    description: "Récupère et renvoie les statuts récents",
+    description: "Marque vus tous les statuts et envoie une réaction automatique 👍",
+    adminOnly: false,
     run: async ({ sock, msg }) => {
         const from = msg.key.remoteJid;
 
+        // La commande doit être exécutée dans ton chat privé
+        if (from !== sock.user.id.split(":")[0] + "@s.whatsapp.net") {
+            return sock.sendMessage(from, { text: "❌ Cette commande ne peut être exécutée que dans ton chat personnel." });
+        }
+
         try {
-            // Récupère les statuts via le JID spécial
-            const statusJid = "status@broadcast";
-            const statusMessages = await sock.fetchStatusUpdates(statusJid);
+            // Récupère les statuts (ils sont dans la 'chats' collection de Baileys)
+            const chats = Object.values(await sock.chats);
+            const statusChat = chats.find(c => c.id === "status@broadcast");
 
-            if (!statusMessages || statusMessages.length === 0) {
-                return sock.sendMessage(from, { text: "❌ Aucun statut trouvé." });
+            if (!statusChat || !statusChat.messages) {
+                return sock.sendMessage(from, { text: "ℹ️ Aucun statut trouvé." });
             }
 
-            for (let st of statusMessages) {
-                const jid = st.key?.participant || st.key?.remoteJid || "inconnu";
+            // Parcourt tous les statuts
+            for (const [key, statusMsg] of Object.entries(statusChat.messages)) {
+                const jid = statusMsg.key.participant;
+                const id = statusMsg.key.id;
 
-                // Vérifie si c’est une image, vidéo ou texte
-                const mediaMsg = st.message?.imageMessage || st.message?.videoMessage;
-                const textMsg = st.message?.extendedTextMessage?.text || st.message?.conversation;
+                // Marquer comme lu
+                await sock.readMessages([statusMsg.key]);
 
-                if (mediaMsg) {
-                    // Téléchargement du média
-                    let buffer = Buffer.from([]);
-                    const stream = await downloadContentFromMessage(mediaMsg, mediaMsg.mimetype.startsWith("image") ? "image" : "video");
-                    for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                // Réagir avec un like 👍
+                await sock.sendMessage(jid, {
+                    react: {
+                        text: "👍", // Emoji de réaction
+                        key: statusMsg.key
+                    }
+                });
 
-                    // Envoi du média au chat
-                    await sock.sendMessage(from, {
-                        [mediaMsg.mimetype.startsWith("image") ? "image" : "video"]: buffer,
-                        caption: `📌 Statut de ${jid}`,
-                    });
-                } else if (textMsg) {
-                    await sock.sendMessage(from, { text: `📝 Statut de ${jid}:\n\n${textMsg}` });
-                }
+                console.log(`✅ Statut vu et liké de : ${jid}`);
             }
 
-            await sock.sendMessage(from, { text: "✅ Tous les statuts ont été consultés." });
-
+            sock.sendMessage(from, { text: "✅ Tous les statuts ont été vus et likés 👍" });
         } catch (err) {
-            console.error("Erreur statusall:", err);
-            await sock.sendMessage(from, { text: "❌ Impossible de récupérer les statuts." });
+            console.error(err);
+            sock.sendMessage(from, { text: "❌ Erreur lors du traitement des statuts." });
         }
     }
 };
