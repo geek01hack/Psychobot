@@ -22,6 +22,10 @@
     "sqlite3": "^5.1.7",
     "youtube-sr": "^4.3.12",
     "yt-dlp-exec": "^1.0.2",
-    "unzipper": "^0.10.14"
+    "unzipper": "^0.10.14",
+    "node-fetch": "^3.4.1",
+    "form-data": "^4.1.0",
+    "ffmpeg-static": "^5.1.0",
+    "axios": "^1.6.0"
   }
 }
