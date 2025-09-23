@@ -2,7 +2,7 @@ services:
   - type: web
     name: psychobot
     env: node
-    region: frankfurt     # (ou "oregon" si tu veux USA)
+    region: oregon
     plan: free
     buildCommand: "npm install"
     startCommand: "node index.js"
