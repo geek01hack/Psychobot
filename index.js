@@ -1,6 +1,12 @@
 // index.js
 const express = require('express');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidDecode } = require('@whiskeysockets/baileys');
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    fetchLatestBaileysVersion, 
+    jidDecode 
+} = require('baileys'); // ← corrigé ici
 const QRCode = require("qrcode");
 const pino = require("pino");
 const fs = require("fs");
